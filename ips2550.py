@@ -5,6 +5,12 @@ import utime
 def read_adc_voltage(adc: machine.ADC, vdd: float = 3.3):
     return adc.read_u16() / 65536 * vdd
 
+def bit_length(n: int) -> int:
+    i = 1
+    while (n >> i) != 0:
+        i += 1
+    return i
+        
 
 VDD_3V3 = 0
 VDD_5V0 = 1
@@ -134,22 +140,16 @@ class IPS:
         self._rx2 = machine.ADC(rx2)
         self._ref = machine.ADC(ref)
         self._i2c_addr = i2c_addr
-
-    def crc_remainder(self, input_bitstring, polynomial_bitstring, initial_filler):
-        """Calculate the CRC remainder of a string of bits using a chosen polynomial.
-        initial_filler should be '1' or '0'.
-        """
-        polynomial_bitstring = polynomial_bitstring.lstrip("0")
-        len_input = len(input_bitstring)
-        initial_padding = (len(polynomial_bitstring) - 1) * initial_filler
-        input_padded_array = list(input_bitstring + initial_padding)
-        while "1" in input_padded_array[:len_input]:
-            cur_shift = input_padded_array.index("1")
-            for i in range(len(polynomial_bitstring)):
-                input_padded_array[cur_shift + i] = str(
-                    int(polynomial_bitstring[i] != input_padded_array[cur_shift + i])
-                )
-        return "".join(input_padded_array)[len_input:]
+  
+    def crc(self, word: int, polynomial: int) -> int:
+        n = bit_length(polynomial) - 1
+        word = word << n
+        while (word >> n) != 0:
+            xor_mask = (2**bit_length(polynomial) - 1) << (bit_length(word) - bit_length(polynomial))
+            xor_val = polynomial << (bit_length(word) - bit_length(polynomial))
+            word = ((word & xor_mask) ^ xor_val) | (word & ~xor_mask)
+            
+        return (word & (2**n - 1))
 
     def read_reg(self, reg_addr):
         data = self._i2c.readfrom_mem(self._i2c_addr, reg_addr, 2)
@@ -157,13 +157,12 @@ class IPS:
         return reg
 
     def write_reg(self, reg_addr, value):
-        crc_in = bin(
+        crc_in = (
             (((reg_addr & 0b0000_0000_0111_1111) << 1) << 16)
             | (((value & 0b0000_0111_1111_1000) >> 3) << 8)
             | (value & 0b0000_0000_0000_0111)
-        )[2:]
-        # crc_in = bin(crc_in)[2:]
-        crc_bits = int("0b" + self.crc_remainder(crc_in, "1011", "0"))
+        )
+        crc_bits = self.crc(crc_in, 0b1011)
         message = int((value << 5) | 0b11000 | crc_bits)
         self._i2c.writeto_mem(self._i2c_addr, reg_addr, message.to_bytes(2, "big"))
 

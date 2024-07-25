@@ -40,16 +40,15 @@ ips = ips2550.IPS(
     ref=machine.Pin(28),
 )
 
+# ips.set_output_mode(ips2550.OM_DIFFERENTIAL)
+# ips.set_voltage(ips2550.VDD_3V3)
+# ips.set_current_bias(0xFF)
+# ips.set_automatic_gain_control(False)
+# ips.set_master_gain_boost(True)
+# ips.set_master_gain_code(50)
 
-ips.set_output_mode(ips2550.OM_DIFFERENTIAL)
-ips.set_voltage(ips2550.VDD_3V3)
-ips.set_current_bias(0xFF)
-ips.set_automatic_gain_control(False)
-ips.set_master_gain_boost(True)
-ips.set_master_gain_code(50)
 
-
-print_current_config(ips)
+# print_current_config(ips)
 
 
 # while(True):
