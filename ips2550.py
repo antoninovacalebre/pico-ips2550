@@ -5,15 +5,38 @@ import utime
 def read_adc_voltage(adc: machine.ADC, vdd: float = 3.3):
     return adc.read_u16() / 65536 * vdd
 
+
 def bit_length(n: int) -> int:
     i = 1
     while (n >> i) != 0:
         i += 1
     return i
-        
+
+
+def crc(word: int, polynomial: int, filler: int = 0) -> int:
+    g = bit_length(polynomial)
+    n = g - 1
+    word = (word << n) | filler
+    while (word >> n) != 0:
+        first_one = bit_length(word)
+        xor_mask = ~(0xFF << g) << (first_one - g)
+        xor_val = polynomial << (first_one - g)
+        word = ((word & xor_mask) ^ xor_val) | (word & ~xor_mask)
+
+    return word & ~(0xFF << g)
+
+
+def get_bits_in_word(word, bits_list):
+    res = 0x00
+    for bit in bits_list:
+        res = res << 1
+        res |= (word & (1 << bit)) >> bit
+    return res
+
 
 VDD_3V3 = 0
 VDD_5V0 = 1
+
 OM_DIFFERENTIAL = 0
 OM_SINGLE_ENDED = 1
 
@@ -140,20 +163,17 @@ class IPS:
         self._rx2 = machine.ADC(rx2)
         self._ref = machine.ADC(ref)
         self._i2c_addr = i2c_addr
-  
-    def crc(self, word: int, polynomial: int) -> int:
-        n = bit_length(polynomial) - 1
-        word = word << n
-        while (word >> n) != 0:
-            xor_mask = (2**bit_length(polynomial) - 1) << (bit_length(word) - bit_length(polynomial))
-            xor_val = polynomial << (bit_length(word) - bit_length(polynomial))
-            word = ((word & xor_mask) ^ xor_val) | (word & ~xor_mask)
-            
-        return (word & (2**n - 1))
 
     def read_reg(self, reg_addr):
         data = self._i2c.readfrom_mem(self._i2c_addr, reg_addr, 2)
-        reg = (data[0] << 3) | (data[1] >> 5)
+        data = (data[0] << 8) | data[1]
+        crc_bits = data & 0b111
+        reg = data >> 5
+
+        message = ((reg << 5) & 0xFF00) | (reg & 0b111)
+        if crc(message, 0b1011, crc_bits) != 0:
+            raise AssertionError("CRC check failed on read")
+
         return reg
 
     def write_reg(self, reg_addr, value):
@@ -162,7 +182,7 @@ class IPS:
             | (((value & 0b0000_0111_1111_1000) >> 3) << 8)
             | (value & 0b0000_0000_0000_0111)
         )
-        crc_bits = self.crc(crc_in, 0b1011)
+        crc_bits = crc(crc_in, 0b1011)
         message = int((value << 5) | 0b11000 | crc_bits)
         self._i2c.writeto_mem(self._i2c_addr, reg_addr, message.to_bytes(2, "big"))
 
@@ -177,13 +197,6 @@ class IPS:
             mask_set = mask_set | (value << bit)
         newword = newword | mask_set
         self.write_reg(reg_addr, newword)
-
-    def get_bits_in_word(self, word, bits_list):
-        res = 0x00
-        for bit in bits_list:
-            res = res << 1
-            res |= (word & (1 << bit)) >> bit
-        return res
 
     def set_voltage(self, vdd: int):
         if vdd != VDD_3V3 and vdd != VDD_5V0:
@@ -280,39 +293,39 @@ class IPS:
 
     def get_tx_frequency(self) -> float:
         tx_cnt_reg = self.read_reg(0x6E)
-        return self.get_bits_in_word(tx_cnt_reg, list(reversed(range(11)))) * 20_000.0
+        return get_bits_in_word(tx_cnt_reg, list(reversed(range(11)))) * 20_000.0
 
     def get_vdd(self) -> float:
         reg = self.read_reg(0x01)
-        return 5.0 if self.get_bits_in_word(reg, [0]) == VDD_5V0 else 3.3
+        return 5.0 if get_bits_in_word(reg, [0]) == VDD_5V0 else 3.3
 
     def get_output_mode(self) -> int:
         reg = self.read_reg(0x00)
-        return self.get_bits_in_word(reg, [1])
+        return get_bits_in_word(reg, [1])
 
     def get_automatic_gain_control(self) -> bool:
         reg = self.read_reg(0x00)
-        return self.get_bits_in_word(reg, [9]) == 0
+        return get_bits_in_word(reg, [9]) == 0
 
     def get_master_gain_code(self) -> int:
         reg = self.read_reg(0x02)
-        return self.get_bits_in_word(reg, list(reversed(range(7))))
+        return get_bits_in_word(reg, list(reversed(range(7))))
 
     def get_master_gain(self) -> float:
         reg = self.read_reg(0x02)
-        return GAIN_FACTORS[self.get_bits_in_word(reg, list(reversed(range(7))))]
+        return GAIN_FACTORS[get_bits_in_word(reg, list(reversed(range(7))))]
 
     def get_master_gain_boost(self) -> bool:
         reg = self.read_reg(0x02)
-        return self.get_bits_in_word(reg, [7]) == 1
+        return get_bits_in_word(reg, [7]) == 1
 
     def get_fine_gain_1_code(self) -> int:
         reg = self.read_reg(0x03)
-        return self.get_bits_in_word(reg, list(reversed(range(7))))
+        return get_bits_in_word(reg, list(reversed(range(7))))
 
     def get_fine_gain_2_code(self) -> int:
         reg = self.read_reg(0x05)
-        return self.get_bits_in_word(reg, list(reversed(range(7))))
+        return get_bits_in_word(reg, list(reversed(range(7))))
 
     def get_fine_gain_1(self) -> float:
         return 1.0 + self.get_fine_gain_1_code() * 0.125 / 100.0 * 2.0
@@ -322,19 +335,19 @@ class IPS:
 
     def get_offset_sign_1(self) -> int:
         reg = self.read_reg(0x04)
-        return 1 if self.get_bits_in_word(reg, [7]) == 0 else -1
+        return 1 if get_bits_in_word(reg, [7]) == 0 else -1
 
     def get_offset_sign_2(self) -> int:
         reg = self.read_reg(0x06)
-        return 1 if self.get_bits_in_word(reg, [7]) == 0 else -1
+        return 1 if get_bits_in_word(reg, [7]) == 0 else -1
 
     def get_offset_code_1(self) -> int:
         reg = self.read_reg(0x04)
-        return self.get_bits_in_word(reg, list(reversed(range(7))))
+        return get_bits_in_word(reg, list(reversed(range(7))))
 
     def get_offset_code_2(self) -> int:
         reg = self.read_reg(0x06)
-        return self.get_bits_in_word(reg, list(reversed(range(7))))
+        return get_bits_in_word(reg, list(reversed(range(7))))
 
     def get_offset_1_perc(self) -> float:
         return self.get_offset_sign_1() * self.get_offset_code_1() * 4 * 0.0015 / 100.0
@@ -344,7 +357,7 @@ class IPS:
 
     def get_tx_current_bias_uA(self) -> float:
         reg = self.read_reg(0x07)
-        code = self.get_bits_in_word(reg, list(reversed(range(8))))
+        code = get_bits_in_word(reg, list(reversed(range(8))))
         mul = code >> 6
         base = code & 0x3F
         return 2 ** (mul * 2) * 31.5 * base / 0x3F
@@ -357,4 +370,4 @@ class IPS:
 
 
 if __name__ == "__main__":
-    pass
+    print("This is a library file, not an executable.")
