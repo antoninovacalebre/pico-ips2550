@@ -1,6 +1,5 @@
 import machine
 import utime
-
 import ips2550
 from ips2550 import VDD_3V3, VDD_5V0, OM_SINGLE_ENDED, OM_DIFFERENTIAL
 
@@ -36,25 +35,27 @@ ips = ips2550.IPS(
     scl=machine.Pin(17),
     i2c_addr=IPS_ADDR,
     freq=I2C_FREQ,
-    rx1=machine.Pin(26),
-    rx2=machine.Pin(27),
+    rx1=machine.Pin(27),
+    rx2=machine.Pin(26),
     ref=machine.Pin(28),
 )
 
-ips.set_output_mode(OM_SINGLE_ENDED)
-ips.set_voltage(VDD_3V3)
-ips.set_current_bias(0xBB)
-ips.set_automatic_gain_control(False)
-ips.set_master_gain_boost(True)
-ips.set_master_gain_code(69)
+# ips.set_output_mode(OM_SINGLE_ENDED)
+# ips.set_voltage(VDD_3V3)
+# ips.set_current_bias(0xFF)
+# ips.set_automatic_gain_control(False)
+# ips.set_master_gain_boost(True)
+# ips.set_master_gain_code(48)
+# ips.set_offset_1(1, 0x00)
 
 print_current_config(ips)
 
 
-# while(True):
-#     freq = ips.get_tx_frequency()
-#     rx1 = ips.get_rx1()
-#     rx2 = ips.get_rx2()
+while(True):
+    vtx = ips.estimate_vtx_pp()
+    freq = ips.get_tx_frequency()
+    rx1 = ips.get_rx1()
+    rx2 = ips.get_rx2()
 
-#     print(f"{freq/1e6:0.2f}\t{rx1:0.3f}\t{rx2:0.3f}")
-#     utime.sleep_ms(100)
+    print(f"{freq/1e6:0.2f}\t{vtx:0.3f}\t{rx1:0.3f}\t{rx2:0.3f}")
+    utime.sleep_ms(100)

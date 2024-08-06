@@ -1,5 +1,6 @@
 import machine
 import utime
+import math
 
 
 def read_adc_voltage(adc: machine.ADC, vdd: float = 3.3):
@@ -328,10 +329,10 @@ class IPS:
         return get_bits_in_word(reg, list(reversed(range(7))))
 
     def get_fine_gain_1(self) -> float:
-        return 1.0 + self.get_fine_gain_1_code() * 0.125 / 100.0 * 2.0
+        return 1.0 + self.get_fine_gain_1_code() * 0.125 / 100.0
 
     def get_fine_gain_2(self) -> float:
-        return 1.0 + self.get_fine_gain_2_code() * 0.125 / 100.0 * 2.0
+        return 1.0 + self.get_fine_gain_2_code() * 0.125 / 100.0
 
     def get_offset_sign_1(self) -> int:
         reg = self.read_reg(0x04)
@@ -350,10 +351,10 @@ class IPS:
         return get_bits_in_word(reg, list(reversed(range(7))))
 
     def get_offset_1_perc(self) -> float:
-        return self.get_offset_sign_1() * self.get_offset_code_1() * 4 * 0.0015 / 100.0
+        return self.get_offset_sign_1() * self.get_offset_code_1() * 0.0015 / 100.0
 
     def get_offset_2_perc(self) -> float:
-        return self.get_offset_sign_2() * self.get_offset_code_2() * 4 * 0.0015 / 100.0
+        return self.get_offset_sign_2() * self.get_offset_code_2() * 0.0015 / 100.0
 
     def get_tx_current_bias_uA(self) -> float:
         reg = self.read_reg(0x07)
@@ -367,6 +368,61 @@ class IPS:
 
     def get_rx2(self) -> float:
         return read_adc_voltage(self._rx2) - read_adc_voltage(self._ref)
+
+    def get_rx1_avg(self, nsamples: int = 10, delay_ms: int = 25) -> float:
+        rx = 0.0
+        for i in range(nsamples):
+            rx += self.get_rx1()
+            utime.sleep_ms(delay_ms)
+        rx /= nsamples
+        return rx
+
+    def get_rx2_avg(self, nsamples: int = 10, delay_ms: int = 25) -> float:
+        rx = 0.0
+        for i in range(nsamples):
+            rx += self.get_rx2()
+            utime.sleep_ms(delay_ms)
+        rx /= nsamples
+        return rx
+
+    def estimate_vtx_rms(self) -> float:
+        vtx = 0.0
+
+        starting_offset_sign = self.get_offset_sign_1()
+        starting_offset = self.get_offset_code_1()
+        gain = self.get_master_gain()
+        if self.get_master_gain_boost():
+            gain *= 2
+
+        # set offset to min (-0x7F)
+        self.set_offset_1(-1, 0x7F)
+        rx1_n = self.get_rx1_avg()
+
+        # set offset to max (0x7F)
+        self.set_offset_1(1, 0x7F)
+        rx1_p = self.get_rx1_avg()
+
+        # go back to original offset
+        self.set_offset_1(starting_offset_sign, starting_offset)
+
+        # rx1_p = gain * (v + op*Vtx_rms)
+        # rx1_n = gain * (v + on*Vtx_rms)
+        # rx1_p - rx1_n = gain * (op - on) * Vtx_rms
+        # -> Vtx_rms = (rx1_p - rx1_n) / (gain * (op - on))
+
+        on = -0x7F * 0.000015
+        op = 0x7F * 0.000015
+        drx = rx1_p - rx1_n
+
+        vtx = drx / (gain * (op - on))
+
+        return vtx
+
+    def estimate_vtx(self) -> float:
+        return self.estimate_vtx() * math.sqrt(2)
+
+    def estimate_vtx_pp(self) -> float:
+        return self.estimate_vtx() * 2.0
 
 
 if __name__ == "__main__":
