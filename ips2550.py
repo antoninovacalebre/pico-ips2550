@@ -299,7 +299,7 @@ class IPS:
 
         vtx = drx / (gain * (op - on))
 
-        return vtx
+        return abs(vtx)
 
     def estimate_vtx(self) -> float:
         return self.estimate_vtx_rms() * math.sqrt(2)

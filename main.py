@@ -41,8 +41,6 @@ ips = ips2550.IPS(
     ref=machine.Pin(28),
 )
 
-# ips.write_register_masked(0x40, 0x3 << 4, 0x00F0)
-# ips.write_register_masked(0x00, 0x3 << 4, 0x00F0)
 # utime.sleep_ms(50)
 # ips.set_msn_i2c_addr(3)
 # ips.set_output_mode(OM_SINGLE_ENDED)
@@ -57,7 +55,6 @@ ips = ips2550.IPS(
 # print(ips.read_register_masked(0x00, 0x00F0))
 
 # print_current_config(ips)
-
 
 # while(True):
 #     vtx = ips.estimate_vtx_pp()
