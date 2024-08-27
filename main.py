@@ -29,6 +29,7 @@ def print_current_config(ips: ips2550.IPS):
     print(f"TX Current Bias           {ips.get_tx_current_bias_uA()} uA")
     print(f"TX Frequency              {ips.get_tx_frequency()/1e6:0.2f} MHz")
 
+
 ips = ips2550.IPS(
     0,
     sda=machine.Pin(16),
@@ -40,6 +41,10 @@ ips = ips2550.IPS(
     ref=machine.Pin(28),
 )
 
+# ips.write_register_masked(0x40, 0x3 << 4, 0x00F0)
+# ips.write_register_masked(0x00, 0x3 << 4, 0x00F0)
+# utime.sleep_ms(50)
+# ips.set_msn_i2c_addr(3)
 # ips.set_output_mode(OM_SINGLE_ENDED)
 # ips.set_voltage(VDD_3V3)
 # ips.set_current_bias(0xFF)
@@ -47,8 +52,11 @@ ips = ips2550.IPS(
 # ips.set_master_gain_boost(True)
 # ips.set_master_gain_code(48)
 # ips.set_offset_1(1, 0x00)
+# ips.set_offset_2(1, 0x00)
 
-print_current_config(ips)
+# print(ips.read_register_masked(0x00, 0x00F0))
+
+# print_current_config(ips)
 
 
 # while(True):
@@ -59,3 +67,4 @@ print_current_config(ips)
 
 #     print(f"{freq/1e6:0.2f}\t{vtx:0.3f}\t{rx1:0.3f}\t{rx2:0.3f}")
 #     utime.sleep_ms(100)
+

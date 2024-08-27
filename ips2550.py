@@ -9,14 +9,14 @@ def read_adc_voltage(adc: machine.ADC, vdd: float = 3.3):
     return adc.read_u16() / 65536 * vdd
 
 
-def bit_length(n: int) -> int:
+def most_significant_one(n: int) -> int:
     i = 1
     while (n >> i) != 0:
         i += 1
     return i
 
 
-def first_bit_set(n: int) -> int:
+def least_significant_one(n: int) -> int:
     if n == 0:
         return 0
     i = 0
@@ -26,11 +26,11 @@ def first_bit_set(n: int) -> int:
 
 
 def crc(word: int, polynomial: int, filler: int = 0) -> int:
-    g = bit_length(polynomial)
+    g = most_significant_one(polynomial)
     n = g - 1
     word = (word << n) | filler
     while (word >> n) != 0:
-        first_one = bit_length(word)
+        first_one = most_significant_one(word)
         xor_mask = ~(0xFF << g) << (first_one - g)
         xor_val = polynomial << (first_one - g)
         word = ((word & xor_mask) ^ xor_val) | (word & ~xor_mask)
@@ -96,22 +96,26 @@ class IPS:
 
     def read_register_masked(self, reg_addr, mask):
         reg = self.read_register(reg_addr)
-        return (reg & mask) >> first_bit_set(mask)
+        return (reg & mask) >> least_significant_one(mask)
 
     def write_register(self, reg_addr, value):
         crc_in = (
-            (((reg_addr & 0b0000_0000_0111_1111) << 1) << 16)
-            | (((value & 0b0000_0111_1111_1000) >> 3) << 8)
-            | (value & 0b0000_0000_0000_0111)
+            ((reg_addr & 0x007F) << 17) | ((value & 0x07F8) << 5) | (value & 0x0007)
         )
         crc_bits = crc(crc_in, 0b1011)
-        message = int((value << 5) | 0b11000 | crc_bits)
+        message = (value << 5) | 0x18 | crc_bits
         self._i2c.writeto_mem(self._i2c_addr, reg_addr, message.to_bytes(2, "big"))
 
     def write_register_masked(self, reg_addr, value, mask):
         reg = self.read_register(reg_addr)
         updated_reg = (reg & ~mask) | (value & mask)
         self.write_register(reg_addr, updated_reg)
+
+    def set_sub_addr(self, msn):
+        self.write_register_masked(0x40, msn << 4, 0x00F0)
+        self.write_register_masked(0x00, msn << 4, 0x00F0)
+        utime.sleep_ms(CONFIG_WAIT_MS)
+        print("The value will change at next power-up.")
 
     def set_voltage(self, vdd: int):
         if vdd != VDD_3V3 and vdd != VDD_5V0:
@@ -156,7 +160,7 @@ class IPS:
     def set_offset_1(self, sign: int, code: int):
         if code > 0x7F or code < 0:
             raise RuntimeError
-        sign_code = (0 if sign < 0 else 1) << 7
+        sign_code = (1 if sign < 0 else 0) << 7
         self.write_register_masked(0x44, sign_code | code, 0x00FF)
         self.write_register_masked(0x04, sign_code | code, 0x00FF)
         utime.sleep_ms(CONFIG_WAIT_MS)
@@ -164,7 +168,7 @@ class IPS:
     def set_offset_2(self, sign: int, code: int):
         if code > 0x7F or code < 0:
             raise RuntimeError
-        sign_code = (0 if sign < 0 else 1) << 7
+        sign_code = (1 if sign < 0 else 0) << 7
         self.write_register_masked(0x46, sign_code | code, 0x00FF)
         self.write_register_masked(0x06, sign_code | code, 0x00FF)
         utime.sleep_ms(CONFIG_WAIT_MS)
