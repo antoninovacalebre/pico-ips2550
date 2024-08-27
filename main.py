@@ -7,7 +7,7 @@ IPS_ADDR = 24
 I2C_FREQ = 100_000
 
 def print_current_config(ips: ips2550.IPS):
-    print(f"Supply Voltage            {ips.get_vdd()} V")
+    print(f"Supply Voltage            {3.3 if ips.get_vdd() == ips2550.VDD_3V3 else 5.0} V")
     print(f"Output Mode               {"Differential" if ips.get_output_mode() == ips2550.OM_DIFFERENTIAL else "Single Ended"}")
     print(f"Automatic Gain Control    {ips.get_automatic_gain_control()}")
     print(
@@ -51,11 +51,11 @@ ips = ips2550.IPS(
 print_current_config(ips)
 
 
-while(True):
-    vtx = ips.estimate_vtx_pp()
-    freq = ips.get_tx_frequency()
-    rx1 = ips.get_rx1()
-    rx2 = ips.get_rx2()
+# while(True):
+#     vtx = ips.estimate_vtx_pp()
+#     freq = ips.get_tx_frequency()
+#     rx1 = ips.get_rx1()
+#     rx2 = ips.get_rx2()
 
-    print(f"{freq/1e6:0.2f}\t{vtx:0.3f}\t{rx1:0.3f}\t{rx2:0.3f}")
-    utime.sleep_ms(100)
+#     print(f"{freq/1e6:0.2f}\t{vtx:0.3f}\t{rx1:0.3f}\t{rx2:0.3f}")
+#     utime.sleep_ms(100)
